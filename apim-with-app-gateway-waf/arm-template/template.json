@@ -1,0 +1,463 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "resourceNameSuffix": {
+            "type": "string",
+            "defaultValue": "[uniqueString(subscription().subscriptionId, resourceGroup().name)]",
+            "metadata": {
+                "description": "A string that can be appended to globally unique resource names."
+            }
+        },
+
+        "vnetAddressPrefix": {
+            "type": "string",
+            "defaultValue": "192.168.1.0/20",
+            "metadata": {
+                "description": "The address space to use for the VNet."
+            }
+        },
+        "vnetApimSubnetPrefix": {
+            "type": "string",
+            "defaultValue": "192.168.1.0/25",
+            "metadata": {
+                "description": "The prefix to use for the subnet that will contain the API Management gateway."
+            }
+        },
+        "vnetAppGatewaySubnetPrefix": {
+            "type": "string",
+            "defaultValue": "192.168.2.0/25",
+            "metadata": {
+                "description": "The prefix to use for the subnet that will contain the Application Gateway."
+            }
+        },
+
+        "apimPublisherEmail": {
+            "type": "string",
+            "minLength": 1,
+            "defaultValue": "admin@contoso.com",
+            "metadata": {
+                "description": "The email address of the organisation that owns the API Management gateway."
+            }
+        },
+        "apimPublisherName": {
+            "type": "string",
+            "minLength": 1,
+            "defaultValue": "Contoso",
+            "metadata": {
+                "description": "The name of the organisation that owns the API Management gateway."
+            }
+        },
+        "apimSku": {
+            "type": "string",
+            "allowedValues": [
+                "Developer",
+                "Premium"
+            ],
+            "defaultValue": "Developer",
+            "metadata": {
+                "description": "The pricing tier of the API Management gateway."
+            }
+        },
+        "apimSkuCount": {
+            "type": "int",
+            "defaultValue": 1,
+            "metadata": {
+                "description": "The number of instances to deploy of the API Management gateway."
+            }
+        },
+        "apimProxyHostName": {
+            "type": "string",
+            "metadata": {
+                "description": "The host name for the API Management gateway's proxy."
+            }
+        },
+        "apimDevPortalHostName": {
+            "type": "string",
+            "metadata": {
+                "description": "The host name for the API Management gateway's developer portal."
+            }
+        },
+        "apimProxySslCertificatePfxBase64": {
+            "type": "securestring",
+            "metadata": {
+                "description": "The base 64-encoded .pfx private key certificate for the API Management gateway's proxy custom host name."
+            }
+        },
+        "apimProxySslCertificatePfxPassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "The password of the .pfx private key certificate for the API Management gateway's proxy custom host name."
+            }
+        },
+        "apimProxySslCertificatePublicKeyBase64": {
+            "type": "securestring",
+            "metadata": {
+                "description": "The base 64-encoded .cer public key certificate for the API Management gateway's proxy custom host name."
+            }
+        },
+        "apimDevPortalSslCertifcatePfxBase64": {
+            "type": "securestring",
+            "metadata": {
+                "description": "The base 64-encoded .pfx private key certificate for the API Management gateway's developer portal custom host name."
+            }
+        },
+        "apimDevPortalSslCertificatePfxPassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "The password of the .pfx private key certificate for the API Management gateway's developer portal custom host name."
+            }
+        },
+
+        "applicationGatewaySize": {
+            "type": "string",
+            "allowedValues": [
+                "WAF_Medium",
+                "WAF_Large"
+            ],
+            "defaultValue": "WAF_Medium",
+            "metadata": {
+                "description": "The type of Application Gateway to deploy."
+            }
+        },
+        "applicationGatewayCapacity": {
+            "type": "int",
+            "defaultValue": 1,
+            "metadata": {
+                "description": "The number of instances to deploy for Application Gateway."
+            }
+        },
+        "applicationGatewayWafEnabled": {
+            "type": "bool",
+            "defaultValue": true,
+            "metadata": {
+                "description": "Indicates whether to enable the WAF for the Application Gateway."
+            }
+        },
+        "applicationGatewayWafMode": {
+            "type": "string",
+            "allowedValues": [
+                "Detection",
+                "Prevention"
+            ],
+            "defaultValue": "Detection",
+            "metadata": {
+                "description": "The mode that the Application Gateway WAF should use."
+            }
+        }
+    },
+    "variables": {
+        "apimServiceName": "[concat('apim-', parameters('resourceNameSuffix'))]",
+
+        "virtualNetworkResourceId": "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
+        "virtualNetworkName": "ApiVNet",
+        "apimSubnetName": "ApiManagement",
+        "appGatewaySubnetName": "AppGateway",
+
+        "applicationGatewayName": "AppGateway",
+        "applicationGatewayResourceId": "[resourceId('Microsoft.Network/applicationGateways', variables('applicationGatewayName'))]",
+
+        "publicIPAddressName": "AppGatewayPublicIPAddress"
+    },
+    "resources": [
+        {
+            "name": "[variables('publicIPAddressName')]",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2017-06-01",
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic"
+            }
+        },
+        {
+            "name": "[variables('virtualNetworkName')]",
+            "type": "Microsoft.Network/virtualNetworks",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[parameters('vnetAddressPrefix')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[concat(variables('apimSubnetName'))]",
+                        "properties": {
+                            "addressPrefix": "[parameters('vnetApimSubnetPrefix')]"
+                        }
+                    },
+                    {
+                        "name": "[concat(variables('appGatewaySubnetName'))]",
+                        "properties": {
+                            "addressPrefix": "[parameters('vnetAppGatewaySubnetPrefix')]"
+                        }
+                    },
+                    {
+                        "name": "VMs",
+                        "properties": {
+                            "addressPrefix": "192.168.3.0/24"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('apimServiceName')]",
+            "type": "Microsoft.ApiManagement/service",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2018-01-01",
+            "sku": {
+                "name": "[parameters('apimSku')]",
+                "capacity": "[parameters('apimSkuCount')]"
+            },
+            "properties": {
+                "publisherEmail": "[parameters('apimPublisherEmail')]",
+                "publisherName": "[parameters('apimPublisherName')]",
+                "virtualNetworkType": "Internal",
+                "virtualNetworkConfiguration": {
+                    "subnetResourceId": "[concat(variables('virtualNetworkResourceId'), '/subnets/', variables('apimSubnetName'))]",
+                    "location": "[resourceGroup().location]"
+                },
+                "hostnameConfigurations": [
+                    {
+                        "type": "Proxy",
+                        "hostName": "[parameters('apimProxyHostName')]",
+                        "encodedCertificate": "[parameters('apimProxySslCertificatePfxBase64')]",
+                        "certificatePassword": "[parameters('apimProxySslCertificatePfxPassword')]",
+                        "negotiateClientCertificate": false
+                    },
+                    {
+                        "type": "Portal",
+                        "hostName": "[parameters('apimDevPortalHostName')]",
+                        "encodedCertificate": "[parameters('apimDevPortalSslCertifcatePfxBase64')]",
+                        "certificatePassword": "[parameters('apimDevPortalSslCertificatePfxPassword')]",
+                        "negotiateClientCertificate": false
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[variables('virtualNetworkName')]"
+            ]
+        },
+        {
+            "name": "[concat(variables('applicationGatewayName'))]",
+            "type": "Microsoft.Network/applicationGateways",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2018-11-01",
+            "properties": {
+                "sku": {
+                    "name": "[parameters('applicationGatewaySize')]",
+                    "tier": "WAF",
+                    "capacity": "[parameters('applicationGatewayCapacity')]"
+                },
+                "sslCertificates": [
+                    {
+                        "name": "appGatewayApimProxySslCertificate",
+                        "properties": {
+                            "data": "[parameters('apimProxySslCertificatePfxBase64')]",
+                            "password": "[parameters('apimProxySslCertificatePfxPassword')]"
+                        }
+                    },
+                    {
+                        "name": "appGatewayApimDevPortalSslCertificate",
+                        "properties": {
+                            "data": "[parameters('apimDevPortalSslCertifcatePfxBase64')]",
+                            "password": "[parameters('apimDevPortalSslCertificatePfxPassword')]"
+                        }
+                    }
+                ],
+                "authenticationCertificates": [
+                    {
+                        "name": "apimAuthenticationCertificate",
+                        "properties": {
+                            "data": "[parameters('apimProxySslCertificatePublicKeyBase64')]"
+                        }
+                    }
+                ],
+                "gatewayIPConfigurations": [
+                    {
+                        "name": "appGatewayIPConfiguration",
+                        "properties": {
+                            "subnet": {
+                                 "id": "[concat(variables('virtualNetworkResourceId'), '/subnets/', variables('appGatewaySubnetName'))]"
+                            }
+                        }
+                    }
+                ],
+                "frontendIPConfigurations": [
+                    {
+                        "name": "appGatewayFrontendIP",
+                        "properties": {
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]"
+                            }
+                        }
+                    }
+                ],
+                "frontendPorts": [
+                    {
+                        "name": "appGatewayFrontendPort",
+                        "properties": {
+                            "port": 443
+                        }
+                    }
+                ],
+                "backendAddressPools": [
+                    {
+                        "name": "apimBackendPool",
+                        "properties": {
+                            "backendAddresses": [
+                                {
+                                    "ipAddress": "[reference(resourceId('Microsoft.ApiManagement/service/', variables('apimServiceName')), '2017-03-01').staticIPs[1]]"
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "backendHttpSettingsCollection": [
+                    {
+                        "name": "apimProxyHttpSettings",
+                        "properties": {
+                            "port": 443,
+                            "protocol": "Https",
+                            "cookieBasedAffinity": "Disabled",
+                            "requestTimeout": 180,
+                            "authenticationCertificates": [
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('applicationGatewayName')), '/authenticationCertificates/apimAuthenticationCertificate')]"
+                                }
+                            ],
+                            "probeEnabled": true,
+                            "probe": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('applicationGatewayName')), '/probes/apimProxyHealthProbe')]"
+                            }
+                        }
+                    },
+                    {
+                        "name": "apimDevPortalHttpSettings",
+                        "properties": {
+                            "port": 443,
+                            "protocol": "Https",
+                            "cookieBasedAffinity": "Disabled",
+                            "requestTimeout": 180,
+                            "authenticationCertificates": [
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('applicationGatewayName')), '/authenticationCertificates/apimAuthenticationCertificate')]"
+                                }
+                            ],
+                            "probeEnabled": true,
+                            "probe": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('applicationGatewayName')), '/probes/apimDevPortalHealthProbe')]"
+                            }
+                        }
+                    }
+                ],
+                "httpListeners": [
+                    {
+                        "name": "apimProxyHttpListener",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/frontendIPConfigurations/appGatewayFrontendIP')]"
+                            },
+                            "frontendPort": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/frontendPorts/appGatewayFrontendPort')]"
+                            },
+                            "protocol": "Https",
+                            "sslCertificate": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/sslCertificates/appGatewayApimProxySslCertificate')]"
+                            },
+                            "hostName": "[parameters('apimProxyHostName')]",
+                            "requireServerNameIndication": true
+                        }
+                    },
+                    {
+                        "name": "apimDevPortalHttpListener",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/frontendIPConfigurations/appGatewayFrontendIP')]"
+                            },
+                            "frontendPort": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/frontendPorts/appGatewayFrontendPort')]"
+                            },
+                            "protocol": "Https",
+                            "sslCertificate": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/sslCertificates/appGatewayApimDevPortalSslCertificate')]"
+                            },
+                            "hostName": "[parameters('apimDevPortalHostName')]",
+                            "requireServerNameIndication": true
+                        }
+                    }
+                ],
+                "requestRoutingRules": [
+                    {
+                        "name": "apimProxyRoutingRule",
+                        "properties": {
+                            "ruleType": "Basic",
+                            "httpListener": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/httpListeners/apimProxyHttpListener')]"
+                            },
+                            "backendAddressPool": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/backendAddressPools/apimBackendPool')]"
+                            },
+                            "backendHttpSettings": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/backendHttpSettingsCollection/apimProxyHttpSettings')]"
+                            }
+                        }
+                    },
+                    {
+                        "name": "apimDevPortalRoutingRule",
+                        "properties": {
+                            "ruleType": "Basic",
+                            "httpListener": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/httpListeners/apimDevPortalHttpListener')]"
+                            },
+                            "backendAddressPool": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/backendAddressPools/apimBackendPool')]"
+                            },
+                            "backendHttpSettings": {
+                                "id": "[concat(variables('applicationGatewayResourceId'), '/backendHttpSettingsCollection/apimDevPortalHttpSettings')]"
+                            }
+                        }
+                    }
+                ],
+                "probes": [
+                    {
+                        "name": "apimProxyHealthProbe",
+                        "properties": {
+                            "protocol": "Https",
+                            "path": "/status-0123456789abcdef",
+                            "host": "[parameters('apimProxyHostName')]",
+                            "interval": 30,
+                            "timeout": 120,
+                            "unhealthyThreshold": 8,
+                            "minServers": 0,
+                            "pickHostNameFromBackendHttpSettings": false
+                        }
+                    },
+                    {
+                        "name": "apimDevPortalHealthProbe",
+                        "properties": {
+                            "protocol": "Https",
+                            "path": "/signin",
+                            "host": "[parameters('apimDevPortalHostName')]",
+                            "interval": 60,
+                            "timeout": 300,
+                            "unhealthyThreshold": 8,
+                            "minServers": 0,
+                            "pickHostNameFromBackendHttpSettings": false
+                        }
+                    }
+                ],
+                "webApplicationFirewallConfiguration": {
+                    "firewallMode": "[parameters('applicationGatewayWafMode')]"
+                }
+            },
+            "dependsOn": [
+                "[variables('virtualNetworkName')]",
+                "[variables('publicIPAddressName')]",
+                "[concat('Microsoft.ApiManagement/service/', variables('apimServiceName'))]"
+            ]
+        }
+    ]
+}
